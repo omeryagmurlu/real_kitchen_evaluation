@@ -9,6 +9,10 @@ from time import sleep
 
 import hydra
 import numpy as np
+import imageio
+import optree
+
+from omegaconf import DictConfig
 
 from src.kitchen import kitchen_dataset_obs_transforms
 from src.utils.non_blocking_keypress import NonBlockingKeyPress
@@ -61,12 +65,18 @@ class EvaluationApp:
         self.gripper_widths = []
         self.actions = []
 
+        self.images = {
+            "primary_camera": [],
+            "secondary_camera": []
+        }
+
     def _inference_step(self):
 
         assert self.instruction is not None
 
         std_obs = self.env.to_standardized_obs(self.latest_obs)
         tr_obs = kitchen_dataset_obs_transforms(std_obs)
+        self.tr_obs = tr_obs
 
         raw_actions = self.agent(tr_obs)
 
@@ -77,19 +87,16 @@ class EvaluationApp:
         # 4) Postprocess (de-normalize, handle orientation, sticky gripper, etc.)
         processed_actions = self.env.from_standardized_action(raw_actions)
 
-        print("gripper: ", processed_actions[..., -1])
-        # processed_actions[..., -1] = 1.0 if processed_actions[..., -1] > 0.5 else -1.0
-
         # 5) Step the environment
         self.latest_obs, reward, done, truncated, info = self.env.step(processed_actions)
 
         # Record time
         self.latest_obs_timestamp = datetime.now()
 
-    def _init_storage(self, task_name: str, subtask_number: int):
+    def _init_storage(self, task_name: str, subtask_number: int, task_i: int, subtask_name: str):
 
         # Create task and subtask folder
-        subtask_dir = self.output_dir / task_name / str(subtask_number)
+        subtask_dir = self.output_dir / task_name / str(task_i + 200) / (subtask_name + "_" + str(subtask_number))
         subtask_dir.mkdir(parents=True, exist_ok=True)
         self.subtask_dir = subtask_dir
 
@@ -113,9 +120,8 @@ class EvaluationApp:
         self.actions.append(self.latest_action)
 
         # Save video
-        # TODO
-        self.latest_obs["primary_camera"]
-        self.latest_obs["secondary_camera"]
+        self.images["primary_camera"].append(self.tr_obs["primary_camera"])
+        self.images["secondary_camera"].append(self.tr_obs["secondary_camera"])
 
     def _save_subtask(self, success):
 
@@ -143,13 +149,17 @@ class EvaluationApp:
         actions = np.vstack(self.actions)
         np.save(self.subtask_dir / "actions.npy", actions)
 
-        # Save video
+        for camera in self.images:
+            vid = np.stack(self.images[camera], axis=0)
+            imageio.mimsave(self.subtask_dir / f"{camera}.mp4", vid, fps=10)
+
+        (self.subtask_dir / ('success' if success else 'failure')).touch()
 
     def run_evaluation(self):
 
         # Run tasks
-        for task in self.tasks:
-            if not isinstance(task, dict):
+        for task_i, task in enumerate(self.tasks):
+            if not (isinstance(task, DictConfig) or isinstance(task, dict)):
                 task = dict(
                     name=task,
                     subtasks=[task]
@@ -199,7 +209,7 @@ class EvaluationApp:
                 logger.info(f"Running subtask instruction: '{subtask}'")
 
                 # Init subtask output folder
-                self._init_storage(task["name"], i)
+                self._init_storage(task["name"], i, task_i, subtask)
 
                 # Reset everything
                 self._reset(reset_robot=False)

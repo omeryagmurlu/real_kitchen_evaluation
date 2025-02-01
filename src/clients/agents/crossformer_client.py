@@ -18,7 +18,7 @@ def from_standard_obs(std_obs):
     return cf_obs
 
 class CrossformerClient:
-    def __init__(self, server_url: str = "http://0.0.0.0:8000"):
+    def __init__(self, server_url: str = "http://0.0.0.0:8007"):
         self.server_url = server_url
 
     def __call__(self, observation: dict):

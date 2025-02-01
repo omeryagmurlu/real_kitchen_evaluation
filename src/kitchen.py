@@ -31,7 +31,10 @@ def map_task(key) -> str:
         'pot_from_sink_to_right_stove': 'Move pot from sink to right stove',
     }
 
-    return tasks[key]
+    if key in tasks:
+        return tasks[key]
+    else:
+        return key
 
 def resize_and_crop(
         cam_img_array, position, des_width: int = 500, des_height: int = 500
@@ -121,15 +124,15 @@ def resize_and_crop(
 
     return image_resized
 
-def kitchen_dataset_obs_transforms(obs):
+def kitchen_dataset_obs_transforms(obs, size=(224,224)):
         """These transforms are embedded within the dataset, so EVERY policy,
         regardless of their own transforms needs to undergo these beforehand"""
         
         primary_image = obs["primary_camera"]  # [H, W, 3]
         secondary_image = obs["secondary_camera"]  # [H, W, 3]
 
-        primary_image = resize_and_crop(primary_image, "top_center_new_lab", 224, 224)
-        secondary_image = resize_and_crop(secondary_image, "front_center_new_lab", 128, 128)
+        primary_image = resize_and_crop(primary_image, "top_center_new_lab", size[0], size[1])
+        secondary_image = resize_and_crop(secondary_image, "front_center_new_lab", size[0], size[1])
 
         obs['primary_camera'] = primary_image
         obs['secondary_camera'] = secondary_image
